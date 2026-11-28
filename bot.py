@@ -12,7 +12,7 @@ from telebot import types
 from concurrent.futures import ThreadPoolExecutor
 
 # ==================== CONFIG ====================
-BOT_TOKEN = "8832919810:AAE-VVDmZx_T-303fnCl5N09SCrCqyQuNRI"
+BOT_TOKEN = "8832919810:AAEUPrjM8vpIq5L-3p_CNqlp9BYbrfjT6Jk"
 ADMIN_ID = 6566026385
 
 API_FILE = "apis.json"
