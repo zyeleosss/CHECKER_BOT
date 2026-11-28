@@ -12,7 +12,7 @@ from telebot import types
 from concurrent.futures import ThreadPoolExecutor
 
 # ==================== CONFIG ====================
-BOT_TOKEN = "8832919810:AAEUPrjM8vpIq5L-3p_CNqlp9BYbrfjT6Jk"
+BOT_TOKEN = "8832919810:AAHGUjqoJLCO6YfFa7cFHw9c00WxKCxq-ZQ"
 ADMIN_ID = 6566026385
 
 API_FILE = "apis.json"
@@ -47,6 +47,37 @@ def save_json(file, data):
     with open(file, 'w') as f: json.dump(data, f, indent=4)
 
 API_BASES = load_json(API_FILE, [
+    "https://shopify-api-b6yt.onrender.com",
+    "https://shopiv2.onrender.com",
+    "https://shopiv3.onrender.com",
+    "https://shpiapi.onrender.com",
+    "https://shpiapi-1.onrender.com",
+    "https://shpiapi-2.onrender.com",
+    "https://shpiapi-3.onrender.com",
+    "https://shpiapi-4.onrender.com",
+    "https://shpiapi-5.onrender.com",
+    "https://shpiapi-6.onrender.com",
+    "https://shpiapi-7.onrender.com",
+    "https://shpiapi-8.onrender.com",
+    "https://shpiapi-9.onrender.com",
+    "https://shpiapi-10.onrender.com",
+    "https://shpiapi-11.onrender.com",
+    "https://shpiapi-12.onrender.com",
+    "https://shpiapi-13.onrender.com",
+    "https://shpiapi-14.onrender.com",
+    "https://shpiapi-15.onrender.com",
+    "https://shpiapi-16.onrender.com",
+    "https://shpiapi-17.onrender.com",
+    "https://shpiapi-18.onrender.com",
+    "https://shpiapi-19.onrender.com",
+    "https://shpiapi-20.onrender.com",
+    "https://shpiapi-21.onrender.com",
+    "https://shpiapi-22.onrender.com",
+    "https://shpiapi-23.onrender.com",
+    "https://shpiapi10.onrender.com",
+    "https://shpiapi11.onrender.com",
+    "https://shpiapi12.onrender.com",
+    "https://shpiapi13.onrender.com",
     "https://shpiapi9.onrender.com",
     "https://shpiapi8.onrender.com",
     "https://shpiapi7.onrender.com",
@@ -54,9 +85,6 @@ API_BASES = load_json(API_FILE, [
     "https://shpiapi5.onrender.com",
     "https://shpiapi4.onrender.com",
     "https://shpiapi3.onrender.com",
-    "https://shpiapi-2.onrender.com",
-    "https://shpiapi-1.onrender.com",
-    "https://shopify-api-b6yt.onrender.com"
 ])
 
 PROXIES = load_json(PROXY_FILE, [])
@@ -68,13 +96,13 @@ proxy_idx = 0
 site_idx = 0
 user_states = {}
 pending_files = {}
+pending_scrape = {}
 
 # ==================== ROLE HELPERS ====================
 def is_admin(uid):
     return uid == ADMIN_ID
 
 def track_user(uid):
-    """Record a user the first time they interact. Only admins can see this list."""
     if uid == ADMIN_ID:
         return
     if uid not in USERS:
@@ -205,7 +233,7 @@ def generate_hit_message(combo, site, res_code, price, gate, proxy="None", produ
             f"💠 {CREDIT}"
         )
 
-# ==================== PROXY CHECKER — RICH ====================
+# ==================== PROXY CHECKER ====================
 PROXY_TYPE_ICONS = {"HTTP": "🌐", "HTTPS": "🔒", "SOCKS4": "🧦", "SOCKS5": "🧦"}
 
 def _geo_lookup(ip):
@@ -328,7 +356,63 @@ def proxy_check_thread(msg, proxies_to_check):
             bot.send_message(msg.chat.id, "\n".join(lines), parse_mode='Markdown'); time.sleep(0.4)
         except: pass
 
-# ==================== AUTO SCRAPER — PROXIES ====================
+# ==================== FAST CHECK + SAVE (NEW FLOW) ====================
+def fast_check_and_save(msg, raw, limit):
+    STOP_PROXY_CHECK.clear()
+    sample = random.sample(raw, min(limit, len(raw)))
+    total = len(sample)
+    alive = []
+    done = 0
+    dead = 0
+    lock = threading.Lock()
+    start = time.time()
+
+    def progress_text():
+        pct = int((done / total) * 100) if total else 0
+        bar = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
+        return (f"⚡ **Fast Proxy Check**\n──────────────────────\n"
+                f"📊 `[{bar}]` {pct}%\n"
+                f"📥 {done}/{total}   ✅ {len(alive)}   ❌ {dead}\n"
+                f"⏱️ {time.time()-start:.1f}s\n──────────────────────\n💠 {CREDIT}")
+
+    def worker(proxy):
+        nonlocal done, dead
+        if STOP_PROXY_CHECK.is_set(): return
+        res = check_single_proxy(proxy, timeout=4)
+        with lock:
+            done += 1
+            if res: alive.append(res)
+            else: dead += 1
+            if done % 20 == 0 or done == total:
+                try: bot.edit_message_text(progress_text(),
+                        chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
+                except: pass
+
+    with ThreadPoolExecutor(max_workers=100) as ex:
+        list(ex.map(worker, sample))
+
+    alive.sort(key=lambda x: x["latency"])
+    global PROXIES
+    before = len(PROXIES)
+    for a in alive:
+        if a["proxy"] not in PROXIES:
+            PROXIES.append(a["proxy"])
+    added = len(PROXIES) - before
+    save_json(PROXY_FILE, PROXIES)
+
+    elapsed = time.time() - start
+    bot.edit_message_text(
+        f"⚡ **Fast Check Done**\n──────────────────────\n"
+        f"📥 Checked: `{total}`\n"
+        f"✅ Alive: `{len(alive)}`\n"
+        f"❌ Dead: `{dead}`\n"
+        f"🆕 Added to pool: `{added}`\n"
+        f"📦 Total pool: `{len(PROXIES)}`\n"
+        f"⏱️ {elapsed:.1f}s\n──────────────────────\n💠 {CREDIT}",
+        chat_id=msg.chat.id, message_id=msg.message_id,
+        reply_markup=proxy_menu(), parse_mode='Markdown')
+
+# ==================== AUTO SCRAPER — PROXIES (CHECK-FIRST) ====================
 PROXY_SOURCES = [
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt",
@@ -347,7 +431,7 @@ PROXY_LINE = re.compile(r'^(\d{1,3}\.){3}\d{1,3}:\d{2,5}$')
 
 def scrape_proxies_thread(msg):
     STOP_SCRAPE.clear()
-    bot.edit_message_text("🕷️ **Scraping Proxies…**\nfetching from public sources…",
+    bot.edit_message_text("🕷️ **Scraping Proxies…**\nfetching raw from public sources…",
                           chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
     found = set(); sources_ok = 0
     for i, src in enumerate(PROXY_SOURCES):
@@ -361,21 +445,35 @@ def scrape_proxies_thread(msg):
                     if PROXY_LINE.match(line): found.add(line)
         except: pass
         if i % 3 == 0:
-            try: bot.edit_message_text(f"🕷️ **Scraping Proxies…**\n\nsources: {i+1}/{len(PROXY_SOURCES)}\nfound: `{len(found)}`",
-                                        chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
+            try: bot.edit_message_text(
+                f"🕷️ **Scraping Proxies…**\n\nsources: {i+1}/{len(PROXY_SOURCES)}\nraw found: `{len(found)}`",
+                chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
             except: pass
-    global PROXIES
-    before = len(PROXIES)
-    for p in found:
-        if p not in PROXIES: PROXIES.append(p)
-    added = len(PROXIES) - before
-    save_json(PROXY_FILE, PROXIES)
-    bot.edit_message_text(f"🕷️ **Scrape Done**\n──────────────────────\n"
-                          f"📡 Sources hit: `{sources_ok}/{len(PROXY_SOURCES)}`\n"
-                          f"🆕 New proxies: `{added}`\n📦 Total: `{len(PROXIES)}`\n"
-                          f"──────────────────────\n💡 Run **Check All** next.\n\n💠 {CREDIT}",
-                          chat_id=msg.chat.id, message_id=msg.message_id,
-                          reply_markup=proxy_menu(), parse_mode='Markdown')
+
+    raw = list(found)
+    if not raw:
+        bot.edit_message_text("❌ No raw proxies scraped.",
+                              chat_id=msg.chat.id, message_id=msg.message_id,
+                              reply_markup=proxy_menu(), parse_mode='Markdown')
+        return
+
+    pending_scrape[msg.chat.id] = {"raw": raw, "msg_id": msg.message_id, "sources_ok": sources_ok}
+
+    markup = types.InlineKeyboardMarkup(row_width=3)
+    for n in (50, 100, 200, 500, 1000):
+        markup.add(types.InlineKeyboardButton(f"🔍 Check {n}", callback_data=f"pscrape_{n}"))
+    markup.add(types.InlineKeyboardButton(f"🔍 Check ALL ({len(raw)})", callback_data=f"pscrape_{len(raw)}"))
+    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="menu_proxy"))
+
+    bot.edit_message_text(
+        f"🕷️ **Scrape Done**\n──────────────────────\n"
+        f"📡 Sources hit: `{sources_ok}/{len(PROXY_SOURCES)}`\n"
+        f"📦 Raw collected: `{len(raw)}`\n"
+        f"──────────────────────\n"
+        f"⚠️ Nothing saved yet.\n"
+        f"Pick how many to **check live** — only alive get saved.\n\n💠 {CREDIT}",
+        chat_id=msg.chat.id, message_id=msg.message_id,
+        reply_markup=markup, parse_mode='Markdown')
 
 # ==================== AUTO SCRAPER — SITES ====================
 SHOPIFY_SITE_SOURCES = [
@@ -552,7 +650,7 @@ def single_check_thread(message, combo_data):
         text = f"❌ **Declined**\n💳 `{combo}`\n🏪 {site}\n📦 {product}\n💵 ${price}\n📝 {res}\n\n💠 {CREDIT}"
         bot.edit_message_text(text, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='Markdown')
 
-# ==================== USER MENU (NORMAL) ====================
+# ==================== USER MENU ====================
 def user_menu():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton("🛠 How to Use", callback_data="user_help"))
@@ -676,7 +774,6 @@ def callback_query(call):
 
     track_user(uid)
 
-    # === USER-ONLY CALLBACKS ===
     if data == "user_help":
         text = (
             "🛠 **How to Use**\n\n"
@@ -695,7 +792,6 @@ def callback_query(call):
                               reply_markup=user_menu(), parse_mode='Markdown')
         return
 
-    # === ADMIN GATE — everything below is admin only ===
     if not is_admin(uid):
         bot.answer_callback_query(call.id, "❌ Admin only.")
         return
@@ -729,7 +825,6 @@ def callback_query(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id,
                               reply_markup=users_menu(), parse_mode='Markdown')
 
-    # ===== SITES =====
     elif data == "menu_site":
         bot.edit_message_text(f"🏪 **Site Manager**\nSaved Sites: `{len(SITES)}`",
                               call.message.chat.id, call.message.message_id,
@@ -758,7 +853,6 @@ def callback_query(call):
         bot.answer_callback_query(call.id, "🕷️ Scraping…")
         threading.Thread(target=scrape_sites_thread, args=(call.message,), daemon=True).start()
 
-    # ===== PROXIES =====
     elif data == "menu_proxy":
         bot.edit_message_text(f"🌐 **Proxy Manager**\nSaved Proxies: `{len(PROXIES)}`",
                               call.message.chat.id, call.message.message_id,
@@ -784,7 +878,16 @@ def callback_query(call):
         bot.answer_callback_query(call.id, "🕷️ Scraping…")
         threading.Thread(target=scrape_proxies_thread, args=(call.message,), daemon=True).start()
 
-    # ===== APIs =====
+    elif data.startswith("pscrape_"):
+        n = int(data.replace("pscrape_", ""))
+        stash = pending_scrape.get(call.message.chat.id)
+        if not stash:
+            bot.answer_callback_query(call.id, "❌ Session expired.")
+            return
+        bot.answer_callback_query(call.id, f"⚡ Checking {n}…")
+        threading.Thread(target=fast_check_and_save,
+                         args=(call.message, stash["raw"], n), daemon=True).start()
+
     elif data == "menu_api":
         bot.edit_message_text(f"⚙️ **API Manager**\nActive APIs: `{len(API_BASES)}`",
                               call.message.chat.id, call.message.message_id,
@@ -799,7 +902,6 @@ def callback_query(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id,
                               reply_markup=api_menu(), parse_mode='Markdown')
 
-    # ===== STATS =====
     elif data == "menu_stats":
         bot.edit_message_text(
             f"📊 **Stats**\n\n⚙️ APIs: `{len(API_BASES)}`\n🌐 Proxies: `{len(PROXIES)}`\n"
@@ -807,7 +909,6 @@ def callback_query(call):
             call.message.chat.id, call.message.message_id,
             reply_markup=main_menu(), parse_mode='Markdown')
 
-    # ===== BULK START =====
     elif data.startswith("start_np_") or data.startswith("start_p_"):
         is_proxy = data.startswith("start_p_")
         msg_id = int(data.replace("start_np_", "").replace("start_p_", ""))
@@ -844,7 +945,6 @@ def handle_document(message):
         process_bulk_file(message)
         return
 
-    # only admin can upload proxy/site lists
     if not is_admin(uid):
         return
 
