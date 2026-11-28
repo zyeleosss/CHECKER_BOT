@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 
 # ==================== CONFIG ====================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8832919810:AAFeP925STQ41x7ruXc9Ra5-rfApymW3mx0")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8832919810:AAF7rzbr-Tcn5W2WWmEmFh_MoQA9erjmnYY")
 ADMIN_ID = 6566026385
 
 API_FILE     = "apis.json"
